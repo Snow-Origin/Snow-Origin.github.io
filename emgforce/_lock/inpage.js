@@ -37,8 +37,13 @@
 
   let rendered = false;
 
-  /** 用已解开的内容密钥 access {key, label} 解密入口页并替换当前文档；页面打开前的失败抛出，由解锁页提示。 */
-  async function renderInPage(access) {
+  /**
+   * 用已解开的内容密钥 access {key, label} 解密入口页并替换当前文档；页面打开前的失败抛出，由解锁页提示。
+   * options.log(文字, 进度键) 接收各步进度；options.cancel.aborted 为真时不再替换文档（解锁页已按超时报错）。
+   */
+  async function renderInPage(access, options) {
+    const opts = options || {};
+    const log = opts.log || (() => {});
     const lock = root.SiteLock;
     const doc = root.document;
     const base = new URL('.', root.location.href);
@@ -48,6 +53,7 @@
     const manifest = await lock.openManifest(access.key, new Uint8Array(await response.arrayBuffer()));
     const files = manifest.files;
     if (!files['index.html']) throw new Error('缺少入口页 index.html');
+    log(`清单：${Object.keys(files).length} 个文件`);
 
     const hrefOf = (rel) => new URL(rel.split('/').map(encodeURIComponent).join('/'), base).href;
     /** 本目录内、清单中有的地址返回其相对路径；html 为假时排除网页（链接与导航不改写）。 */
@@ -127,7 +133,16 @@
       urls.set(rel, URL.createObjectURL(blob));
     };
     const eager = Object.keys(files).filter((rel) => files[rel].size <= EAGER_BYTES && !/^(?:video|audio|text\/html)/.test(files[rel].type));
-    const plain = await Promise.all(eager.map((rel) => decrypt(files[rel])));
+    const eagerKb = Math.round(eager.reduce((sum, rel) => sum + files[rel].size, 0) / 1024);
+    let decrypted = 0;
+    log(`解密小文件 0/${eager.length}（${eagerKb} KB）`, 'eager');
+    const plain = await Promise.all(eager.map((rel) => decrypt(files[rel]).then((blob) => {
+      decrypted += 1;
+      log(`解密小文件 ${decrypted}/${eager.length}（${eagerKb} KB）`, 'eager');
+      return blob;
+    }, (err) => {
+      throw new Error(`${rel}：${err.message}`);
+    })));
     const texts = new Map(); // rel → {kind, text}，待改写
     for (let i = 0; i < eager.length; i += 1) {
       const kind = kindOf(files[eager[i]].type);
@@ -153,6 +168,7 @@
     }
     const page = await new Response(await decrypt(files['index.html'])).text();
     const html = rewrite(lock.finishPage(page, access.label), 'html', base.href, readyUrl);
+    log('入口页已解密');
 
     // ---------- 大文件：被设为 src 时排队下载解密；没有元素等待或使用时中止下载或回收地址 ----------
     const lazy = new Map(); // rel → {rel, promise, url, controller, waiting, users}
@@ -173,7 +189,10 @@
         job.item.url = URL.createObjectURL(blob);
         job.resolve(job.item.url);
       } catch (err) {
-        if (lazy.get(job.item.rel) === job.item) lazy.delete(job.item.rel);
+        if (lazy.get(job.item.rel) === job.item) { // 不是因无人需要而中止
+          lazy.delete(job.item.rel);
+          issue('视频加载失败，请检查网络', `${job.item.rel}：${err.message}`);
+        }
         job.reject(err);
       }
       active -= 1;
@@ -264,6 +283,11 @@
         item.users += 1;
         slot.hold = item;
         set(url + hashOf(value));
+        if (media) {
+          el.addEventListener('error', () => {
+            if (slot.hold === item) issue('视频加载失败，请检查网络', `${rel} 无法播放，错误码 ${el.error ? el.error.code : '?'}`);
+          }, { once: true });
+        }
         if (el instanceof HTMLSourceElement && el.parentElement instanceof HTMLMediaElement) nativeLoad.call(el.parentElement);
       }, () => {
         if (slot.want !== item) return;
@@ -281,9 +305,22 @@
       });
     }
 
+    /** 页面打开后的失败（视频下载或播放）在左下角简短提示，细节只写控制台。 */
+    function issue(message, detail) {
+      root.console.warn(`[site-lock] ${detail}`);
+      const box = doc.createElement('div');
+      box.setAttribute('role', 'status');
+      box.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147483647;max-width:90vw;padding:6px 10px;border-radius:6px;'
+        + 'background:rgba(194,65,12,.92);color:#fff;font:12px/1.4 sans-serif;pointer-events:none';
+      box.textContent = message;
+      (doc.body || doc.documentElement).appendChild(box);
+    }
+
     // ---------- 打补丁后替换文档；同一页面全局，补丁在新文档中继续生效。此后不再等待，重复调用只生效一次 ----------
+    if (opts.cancel && opts.cancel.aborted) throw new Error('已超时取消');
     if (rendered) return;
     rendered = true;
+    log('写入页面');
     [[HTMLImageElement, 'src'], [HTMLMediaElement, 'src'], [HTMLSourceElement, 'src'], [HTMLScriptElement, 'src'],
       [HTMLVideoElement, 'poster'], [HTMLLinkElement, 'href']].forEach(([type, attr]) => {
       const desc = Object.getOwnPropertyDescriptor(type.prototype, attr);

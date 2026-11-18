@@ -32,6 +32,8 @@
       color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
     button:disabled { opacity: .6; cursor: progress; }
     .error { color: var(--error); margin: 10px 0 0; font-size: 14px; }
+    .diag { margin: 16px 0 0; padding: 8px 10px; max-height: 40vh; overflow: auto; border-radius: 8px; background: var(--bg);
+      color: var(--muted); font: 11px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
   </style>
 </head>
 <body>
@@ -57,10 +59,11 @@
       </form>
       <p id="unsupported" class="error" hidden>当前浏览器版本过旧，无法打开保密内容。请点右上角“…”，选择在浏览器中打开，或更新浏览器。</p>
       <p class="hint" style="margin-top:12px">访问码仅限本人使用；本设备解锁后无需再次输入。</p>
+      <pre id="diag" class="diag" aria-label="诊断信息" hidden></pre>
     </section>
   </main>
   <script src="_lock/core.js?v=f9a20be2ed9a"></script>
-  <script src="_lock/inpage.js?v=a1c6f28886f4"></script>
-  <script src="_lock/unlock.js?v=b9c3699148ac"></script>
+  <script src="_lock/inpage.js?v=b6ecc3b64aa5"></script>
+  <script src="_lock/unlock.js?v=74a05b986901"></script>
 </body>
 </html>
