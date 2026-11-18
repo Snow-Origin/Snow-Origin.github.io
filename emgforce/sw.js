@@ -1,5 +1,5 @@
 /* Service Worker：解锁后拦截本目录请求，取密文就地解密；未解锁或不在清单中的请求原样走网络。 */
-importScripts('_lock/core.js');
+importScripts('_lock/core.js?v=f9a20be2ed9a');
 
 const lock = self.SiteLock;
 const SCOPE = new URL(self.registration.scope).pathname;
@@ -47,18 +47,6 @@ async function readPlain(current, entry, start, end) {
   return plain.subarray(start - base, end - base + 1);
 }
 
-function watermark(html, label) {
-  const day = new Intl.DateTimeFormat('sv-SE').format(new Date()); // 本地日期 YYYY-MM-DD
-  const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='380' height='220'><text x='190' y='110' "
-    + "text-anchor='middle' transform='rotate(-24 190 110)' font-family='sans-serif' font-size='15' "
-    + `fill='rgb(128,128,128)'>保密 · 访问码 ${label} · ${day}</text></svg>`;
-  const overlay = '<div aria-hidden="true" style="position:fixed;inset:0;pointer-events:none;z-index:2147483647;'
-    + `opacity:.18;background-image:url('data:image/svg+xml,${encodeURIComponent(svg).replace(/'/g, '%27')}')"></div>`;
-  const text = new TextDecoder().decode(html);
-  const at = [...text.matchAll(/<\/body\s*>/gi)].pop()?.index ?? -1;
-  return new TextEncoder().encode(at < 0 ? text + overlay : text.slice(0, at) + overlay + text.slice(at));
-}
-
 async function serve(request, rel) {
   if (request.mode === 'navigate') state = null; // 每次打开页面重读清单，跟上重新打包的内容
   const current = await load();
@@ -77,6 +65,6 @@ async function serve(request, rel) {
     });
   }
   let body = await readPlain(current, entry, 0, entry.size - 1);
-  if (entry.type.startsWith('text/html')) body = watermark(body, current.label);
+  if (entry.type.startsWith('text/html')) body = new TextEncoder().encode(lock.finishPage(new TextDecoder().decode(body), current.label));
   return new Response(body, { status: 200, headers: { ...headers, 'Content-Length': String(body.length) } });
 }

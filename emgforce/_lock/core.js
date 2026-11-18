@@ -96,6 +96,23 @@
     return out;
   }
 
+  /**
+   * 解密后的网页在最后一个 </body> 前插入：平铺水印“保密 · 访问码 label · 本地日期”（不拦截点击），
+   * 以及去掉地址栏 #code= 与解锁页暂存访问码的脚本（内容打开后才去掉，见 unlock.js）。
+   */
+  function finishPage(html, label) {
+    const day = new Intl.DateTimeFormat('sv-SE').format(new Date()); // 本地日期 YYYY-MM-DD
+    const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='380' height='220'><text x='190' y='110' "
+      + "text-anchor='middle' transform='rotate(-24 190 110)' font-family='sans-serif' font-size='15' "
+      + `fill='rgb(128,128,128)'>保密 · 访问码 ${label} · ${day}</text></svg>`;
+    const overlay = '<div aria-hidden="true" style="position:fixed;inset:0;pointer-events:none;z-index:2147483647;'
+      + `opacity:.18;background-image:url('data:image/svg+xml,${encodeURIComponent(svg).replace(/'/g, '%27')}')"></div>`
+      + "<script>if (/^#code=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);"
+      + "try { sessionStorage.removeItem('site-lock-code:' + new URL('.', location.href).pathname); } catch (e) { /* 不可用 */ }</script>";
+    const at = html.search(/<\/body\s*>(?![\s\S]*<\/body\s*>)/i);
+    return at < 0 ? html + overlay : html.slice(0, at) + overlay + html.slice(at);
+  }
+
   /** 解锁页与 sw.js 都在项目根目录，按该目录分键，同域多个项目的授权互不覆盖。 */
   function accessKey() {
     return 'access:' + new URL('.', root.location.href).pathname;
@@ -124,6 +141,7 @@
     parseRange,
     recordSpan,
     decryptRecords,
+    finishPage,
     // 解锁状态 {key: 不可导出的 CryptoKey, label} 存在 IndexedDB，页面与 Service Worker 共用
     saveAccess: (access) => withStore('readwrite', (store) => store.put(access, accessKey())),
     loadAccess: () => withStore('readonly', (store) => store.get(accessKey())),
