@@ -11,7 +11,7 @@
   const label = button.textContent;
   const dir = new URL('.', location.href).pathname;
   const SW_READY_MS = 3000; // 注册后迟迟不激活，视为不可用
-  const RELOAD_MS = 8000; // 交给 Service Worker 的重载迟迟不返回，视为卡住
+  const RELOAD_MS = 15000; // 交给 Service Worker 的重载迟迟不返回，视为卡住（IndexedDB 挂起已由 sw.js 内 5 s 兜住，这里只防完全不响应）
   const NO_SW_DAYS = 30; // 确认重载后页面未被 Service Worker 接管时，本浏览器这么久内直接页内解密
   const NAV_START = performance.timeOrigin || Date.now() - performance.now(); // 本次页面导航开始的时刻
   const T0 = performance.now();

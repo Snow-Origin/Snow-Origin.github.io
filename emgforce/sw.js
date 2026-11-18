@@ -4,7 +4,7 @@ importScripts('_lock/core.js?v=f9a20be2ed9a');
 const lock = self.SiteLock;
 const SCOPE = new URL(self.registration.scope).pathname;
 const STREAM_BYTES = 2 * 1024 * 1024; // 无终点 Range（视频边播边取）每次最多返回 2 MiB
-const IDB_MS = 5000; // IndexedDB 读密钥挂起时不再等：改走网络（打开页面时拿到解锁页，由它改用页内解密）
+const IDB_MS = 5000; // 打开页面时 IndexedDB 读密钥挂起不再等：改走网络拿到解锁页，由它改用页内解密
 let state = null; // {key, label, manifest}
 
 self.addEventListener('install', () => self.skipWaiting());
@@ -19,10 +19,10 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(serve(event.request, rel).catch(() => fetch(event.request)));
 });
 
-async function load() {
+async function load(navigate) {
   if (state) return state;
-  const access = await Promise.race([lock.loadAccess(),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('IndexedDB 超时')), IDB_MS))]);
+  const access = await (!navigate ? lock.loadAccess() : Promise.race([lock.loadAccess(), // 视频等请求照常等待
+    new Promise((_, reject) => setTimeout(() => reject(new Error('IndexedDB 超时')), IDB_MS))]));
   if (!access) return null;
   const response = await fetch(`${SCOPE}_lock/manifest.bin`, { cache: 'no-cache' });
   if (!response.ok) throw new Error(`清单读取失败 ${response.status}`); // 网络问题：保留解锁状态
@@ -51,7 +51,7 @@ async function readPlain(current, entry, start, end) {
 
 async function serve(request, rel) {
   if (request.mode === 'navigate') state = null; // 每次打开页面重读清单，跟上重新打包的内容
-  const current = await load();
+  const current = await load(request.mode === 'navigate');
   const entry = current && current.manifest.files[rel];
   if (!entry) return fetch(request);
   const headers = { 'Content-Type': entry.type, 'Cache-Control': 'no-store', 'Accept-Ranges': 'bytes' };
