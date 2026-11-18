@@ -36,6 +36,7 @@
 
   // ---------- 诊断日志：每行带距页面打开的秒数；访问码一律打码 ----------
   const lines = [];
+  if (diag && /(?:^#|&)diag=1(?:&|$)/.test(location.hash)) diag.hidden = false; // 仅供排查：…&diag=1 一开始就显示日志
   const scrub = (text) => String(text).replace(/#code=[^\s&]*/gi, '#code=…').replace(/\b[A-HJKMNP-Z2-9]{5}-?[A-HJKMNP-Z2-9]{5}\b/g, '…');
   function log(message, key) { // 同一 key 的进度行原地更新
     const line = { key, text: `${((performance.now() - T0) / 1000).toFixed(2)}s ${scrub(message)}` };
@@ -77,7 +78,9 @@
 
   // 本次用的访问码，内容打开前不丢：链接带的留在地址栏，手输的经 sessionStorage 带过重载；
   // 打不开时写回地址栏，“在浏览器中打开”后仍可一键解锁
-  const fromLink = new URLSearchParams(location.hash.slice(1)).get('code'); // 链接 …/#code=XXXXX-XXXXX 自动解锁
+  const hashParams = new URLSearchParams(location.hash.slice(1));
+  const fromLink = hashParams.get('code'); // 链接 …/#code=XXXXX-XXXXX 自动解锁
+  const forceInPage = hashParams.get('inpage') === '1'; // 仅供测试：…/#code=…&inpage=1 在有 Service Worker 的浏览器里也走页内
   const linkCode = (raw) => {
     const n = lock.normalizeCode(raw);
     return n.length === 10 ? `${n.slice(0, 5)}-${n.slice(5)}` : n;
@@ -160,7 +163,7 @@
   async function enter(access) {
     button.disabled = true;
     button.textContent = '正在打开 · Opening…';
-    if (!('serviceWorker' in navigator)) return inPage(access);
+    if (!('serviceWorker' in navigator) || forceInPage) return inPage(access);
     if (readSession('site-lock-inpage:') || noSwRecently()) {
       log('此前 Service Worker 不可用，直接页内解密');
       return inPage(access);

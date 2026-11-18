@@ -6,6 +6,7 @@
 
   const EAGER_BYTES = 4 * 1024 * 1024; // 不超过此大小的非音视频文件在渲染前解密
   const PARALLEL = 2; // 大文件同时下载数：首屏视频之外留一路给用户新点的视频
+  const EXTERNAL_MS = 12000; // 页面引用的外部同步脚本最多等这么久，取不到就跳过
   // 引用的三组依次为前缀、引号、地址，只替换地址
   const ATTR = /(\s(?:src|href|poster)\s*=\s*)(["'])([^"']*)\2/gi;
   const CSS_URL = /(url\(\s*)(["']?)([^"')\s]+)\2/gi;
@@ -76,6 +77,42 @@
       return entry && (html || !entry.type.startsWith('text/html')) ? rel : null;
     }
 
+    /**
+     * 页面里的外部同步脚本（如 CDN 上的库）取不到时会让文档解析一直停住、屏幕停在旧画面。先在时限内取：
+     * 能跨域读取的内联为 Blob URL，只能探到可达的保留原标签，取不到的换成空脚本。返回 原标签 → 替换标签。
+     */
+    async function loadExternal(text) {
+      const result = new Map();
+      const tags = (text.match(/<script\b[^>]*>/gi) || []).filter((tag) => /\ssrc\s*=\s*["']?https?:/i.test(tag)
+        && !/\s(?:async|defer)(?=[\s=>])|\stype\s*=\s*["']?module/i.test(tag));
+      await Promise.all(tags.map(async (tag) => {
+        const raw = /\ssrc\s*=\s*(["']?)([^"'\s>]+)\1/i.exec(tag)[2];
+        const url = raw.replace(/&amp;/g, '&');
+        if (relOf(url, true)) return;
+        const start = Date.now();
+        const within = (promise) => Promise.race([promise, new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('超时')), Math.max(start + EXTERNAL_MS - Date.now(), 0));
+        })]);
+        const host = new URL(url).host;
+        try {
+          const res = await within(nativeFetch(url, { mode: 'cors', credentials: 'omit' }));
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const code = await within(res.text());
+          result.set(tag, tag.replace(raw, URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))));
+          log(`外部脚本 ${host} ✓ ${Date.now() - start} ms`);
+          return;
+        } catch (_) { /* 不能跨域读取或网络问题：再探一次是否可达 */ }
+        try {
+          await within(nativeFetch(url, { mode: 'no-cors', credentials: 'omit' }));
+          log(`外部脚本 ${host} 可达 ${Date.now() - start} ms`);
+        } catch (err) {
+          result.set(tag, '<script>');
+          log(`外部脚本 ${host} ✗（${err.message}），已跳过`);
+        }
+      }));
+      return result;
+    }
+
     /** 下载并逐块解密一个文件为 Blob；边下载边解密，不另存整份密文。 */
     async function decrypt(entry, signal) {
       const parts = [];
@@ -133,6 +170,10 @@
       urls.set(rel, URL.createObjectURL(blob));
     };
     const eager = Object.keys(files).filter((rel) => files[rel].size <= EAGER_BYTES && !/^(?:video|audio|text\/html)/.test(files[rel].type));
+    // 入口页与其中的外部脚本和小文件并行准备
+    const pageText = decrypt(files['index.html']).then((blob) => new Response(blob).text());
+    const externalJob = pageText.then(loadExternal);
+    externalJob.catch(() => {});
     const eagerKb = Math.round(eager.reduce((sum, rel) => sum + files[rel].size, 0) / 1024);
     let decrypted = 0;
     log(`解密小文件 0/${eager.length}（${eagerKb} KB）`, 'eager');
@@ -166,8 +207,8 @@
         publish(rel, new Blob([rewrite(item.text, item.kind, hrefOf(rel), fileUrl)], { type: files[rel].type }));
       }
     }
-    const page = await new Response(await decrypt(files['index.html'])).text();
-    const html = rewrite(lock.finishPage(page, access.label), 'html', base.href, readyUrl);
+    let html = rewrite(lock.finishPage(await pageText, access.label), 'html', base.href, readyUrl);
+    (await externalJob).forEach((replacement, tag) => { html = html.split(tag).join(replacement); });
     log('入口页已解密');
 
     // ---------- 大文件：被设为 src 时排队下载解密；没有元素等待或使用时中止下载或回收地址 ----------
