@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>雪梦未来 EmgForce-4D 项目主页</title>
+  <link rel="icon" href="../assets/brand/logo-round.svg" type="image/svg+xml">
+  <style>
+    :root { --bg: #f5f6f8; --card: #fff; --text: #1d2129; --muted: #6b7280; --line: #d9dce1; --accent: #2563eb; --error: #c2410c; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #111318; --card: #1b1e25; --text: #e6e8eb; --muted: #9aa1ab; --line: #333842; --accent: #60a5fa; --error: #fb923c; }
+      .logo { filter: brightness(0) invert(1); opacity: .9; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+      background: var(--bg); color: var(--text);
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+    main { width: 100%; max-width: 420px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 32px 28px; }
+    .logo { height: 32px; display: block; margin-bottom: 20px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    h2 { font-size: 15px; margin: 0 0 8px; }
+    .sub, .hint { color: var(--muted); font-size: 13px; margin: 0; }
+    section { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .apply { display: flex; gap: 16px; align-items: center; }
+    .apply img { width: 112px; height: 112px; border-radius: 8px; background: #fff; padding: 6px; flex: none; }
+    .apply a { color: var(--accent); font-weight: 600; }
+    input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit;
+      background: transparent; color: inherit; letter-spacing: .04em; }
+    input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+    button { width: 100%; margin-top: 12px; padding: 11px; border: 0; border-radius: 8px; background: var(--accent);
+      color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: progress; }
+    .error { color: var(--error); margin: 10px 0 0; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <main>
+    <img class="logo" src="../assets/brand/logo-horizontal.png" alt="雪梦未来 Snow Origin">
+    <h1>雪梦未来 EmgForce-4D 项目主页</h1>
+    <p class="sub">保密预览 · 凭访问码查看 · Confidential preview</p>
+
+    <section>
+      <h2>申请访问 · Request access</h2>
+      <div class="apply">
+        <img src="_lock/apply-qr.png" alt="访问申请表二维码">
+        <p class="hint">用飞书扫码填写申请（需登录飞书），审批通过后访问码会通过飞书发给您。<br>在手机上浏览时请<a href="https://m0li2uixglq.feishu.cn/share/base/shrcnpXdDHrcWgd1CEG3DtuiINd" target="_blank" rel="noopener">点此打开申请表</a>。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>已有访问码 · Access code</h2>
+      <form id="unlock-form" autocomplete="off">
+        <input id="code" required autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX" aria-label="访问码">
+        <p id="error" class="error" role="alert" hidden></p>
+        <button type="submit">解锁 · Unlock</button>
+      </form>
+      <p id="unsupported" class="error" hidden>当前浏览器无法打开保密内容（常见于飞书、微信内置浏览器）。请点右上角“…”，选择在浏览器中打开。</p>
+      <p class="hint" style="margin-top:12px">访问码仅限本人使用；本设备解锁后无需再次输入。</p>
+    </section>
+  </main>
+  <script src="_lock/core.js"></script>
+  <script src="_lock/unlock.js"></script>
+</body>
+</html>
