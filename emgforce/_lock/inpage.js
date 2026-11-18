@@ -86,14 +86,21 @@
       const tags = (text.match(/<script\b[^>]*>/gi) || []).filter((tag) => /\ssrc\s*=\s*["']?https?:/i.test(tag)
         && !/\s(?:async|defer)(?=[\s=>])|\stype\s*=\s*["']?module/i.test(tag));
       await Promise.all(tags.map(async (tag) => {
-        const raw = /\ssrc\s*=\s*(["']?)([^"'\s>]+)\1/i.exec(tag)[2];
-        const url = raw.replace(/&amp;/g, '&');
+        let raw;
+        let url;
+        let host;
+        try {
+          raw = /\ssrc\s*=\s*(["']?)([^"'\s>]+)\1/i.exec(tag)[2];
+          url = raw.replace(/&amp;/g, '&');
+          host = new URL(url).host;
+        } catch (_) {
+          return; // 认不出地址：原样保留
+        }
         if (relOf(url, true)) return;
         const start = Date.now();
         const within = (promise) => Promise.race([promise, new Promise((_, reject) => {
           setTimeout(() => reject(new Error('超时')), Math.max(start + EXTERNAL_MS - Date.now(), 0));
         })]);
-        const host = new URL(url).host;
         try {
           const res = await within(nativeFetch(url, { mode: 'cors', credentials: 'omit' }));
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -306,7 +313,7 @@
       old.forEach((o) => o && settle(o));
       if (!big) return set(rel ? urls.get(rel) + hashOf(value) : value);
 
-      if (media) { // 先清空旧视频，显示封面
+      if (media) { // 先清空旧视频
         nativeRemoveAttribute.call(el, 'src');
         nativeLoad.call(el);
       }
@@ -346,15 +353,21 @@
       });
     }
 
-    /** 页面打开后的失败（视频下载或播放）在左下角简短提示，细节只写控制台。 */
+    /** 页面打开后的失败（视频下载或播放）在左下角简短提示，同时只留一条、8 s 后消失；细节只写控制台。 */
+    let issueBox = null;
+    let issueTimer = 0;
     function issue(message, detail) {
       root.console.warn(`[site-lock] ${detail}`);
-      const box = doc.createElement('div');
-      box.setAttribute('role', 'status');
-      box.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147483647;max-width:90vw;padding:6px 10px;border-radius:6px;'
-        + 'background:rgba(194,65,12,.92);color:#fff;font:12px/1.4 sans-serif;pointer-events:none';
-      box.textContent = message;
-      (doc.body || doc.documentElement).appendChild(box);
+      if (!issueBox || !issueBox.isConnected) {
+        issueBox = doc.createElement('div');
+        issueBox.setAttribute('role', 'status');
+        issueBox.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147483647;max-width:90vw;padding:6px 10px;'
+          + 'border-radius:6px;background:rgba(194,65,12,.92);color:#fff;font:12px/1.4 sans-serif;pointer-events:none';
+        (doc.body || doc.documentElement).appendChild(issueBox);
+      }
+      issueBox.textContent = message;
+      clearTimeout(issueTimer);
+      issueTimer = setTimeout(() => issueBox.remove(), 8000);
     }
 
     // ---------- 打补丁后替换文档；同一页面全局，补丁在新文档中继续生效。此后不再等待，重复调用只生效一次 ----------

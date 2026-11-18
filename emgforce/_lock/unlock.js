@@ -12,7 +12,7 @@
   const dir = new URL('.', location.href).pathname;
   const SW_READY_MS = 3000; // 注册后迟迟不激活，视为不可用
   const RELOAD_MS = 8000; // 交给 Service Worker 的重载迟迟不返回，视为卡住
-  const NO_SW_DAYS = 30; // 确认 Service Worker 不接管或卡住后，本浏览器这么久内直接页内解密
+  const NO_SW_DAYS = 30; // 确认重载后页面未被 Service Worker 接管时，本浏览器这么久内直接页内解密
   const NAV_START = performance.timeOrigin || Date.now() - performance.now(); // 本次页面导航开始的时刻
   const T0 = performance.now();
 
@@ -130,7 +130,7 @@
     }
   }
 
-  // ---------- Service Worker 不可用的记录：确认不接管或卡住后注销，本浏览器一段时间内直接页内 ----------
+  // ---------- Service Worker 不可用的记录：确认不接管后注销，本浏览器一段时间内直接页内 ----------
   function noSwRecently() {
     try {
       return Date.now() - Number(localStorage.getItem(`site-lock-nosw:${dir}`) || 0) < NO_SW_DAYS * 864e5;
@@ -177,7 +177,12 @@
     // 激活后的下一次导航即由它接管（含强制刷新后的页面）。本次导航紧接在重载标记之后却仍落在解锁页，
     // 说明未接管；sessionStorage 不可用时认不出重载回来，不重载
     if (Math.abs(NAV_START - Number(readSession('site-lock-reload:') || 0)) < 5000) {
-      giveUpSw('重载后未接管');
+      if (navigator.serviceWorker.controller) { // 接管了但没及时解出页面（如 IndexedDB 挂起）：只在本会话改页内
+        log('Service Worker 已接管但未解出页面，本次改为页内解密');
+        writeSession('site-lock-inpage:', '1');
+      } else {
+        giveUpSw('重载后未接管');
+      }
       return inPage(access);
     }
     if (!writeSession('site-lock-reload:', String(Date.now())) || (code && !(fromLink && linkCode(fromLink) === code) && !writeSession('site-lock-code:', code))) {
@@ -187,9 +192,10 @@
     log('重载，交给 Service Worker 解密');
     writeSession('site-lock-log:', lines.map((l) => l.text).join('\n'));
     location.reload(); // 链接里的 #code 随之保留，打开后由页面末尾的脚本去掉
-    setTimeout(() => { // 重载迟迟不返回（Service Worker 卡住）：停掉导航，留在本页解密
+    setTimeout(() => { // 重载迟迟不返回（Service Worker 卡住或网络慢）：停掉导航，本会话留在本页解密
       window.stop();
-      giveUpSw(`重载 ${RELOAD_MS / 1000} s 未返回`);
+      log(`重载 ${RELOAD_MS / 1000} s 未返回，本次改为页内解密`);
+      writeSession('site-lock-inpage:', '1');
       inPage(access);
     }, RELOAD_MS);
     return undefined;
@@ -208,6 +214,7 @@
       const config = await step('读取 lock.json', fetch('_lock/lock.json', { cache: 'no-cache' }).then((r) => r.json()), 15000);
       const access = await step('校验访问码', lock.unlock(input.value, config), 20000);
       if (!access) {
+        input.style.webkitTextSecurity = ''; // 让用户核对输入
         fail('访问码无效，请核对后重试。');
         return;
       }

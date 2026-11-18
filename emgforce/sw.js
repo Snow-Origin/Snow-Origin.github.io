@@ -4,7 +4,7 @@ importScripts('_lock/core.js?v=f9a20be2ed9a');
 const lock = self.SiteLock;
 const SCOPE = new URL(self.registration.scope).pathname;
 const STREAM_BYTES = 2 * 1024 * 1024; // 无终点 Range（视频边播边取）每次最多返回 2 MiB
-const NAVIGATE_MS = 6000; // 打开页面时解密迟迟不完成（如 IndexedDB 挂起），改走网络拿解锁页，由它改用页内解密
+const IDB_MS = 5000; // IndexedDB 读密钥挂起时不再等：改走网络（打开页面时拿到解锁页，由它改用页内解密）
 let state = null; // {key, label, manifest}
 
 self.addEventListener('install', () => self.skipWaiting());
@@ -16,15 +16,13 @@ self.addEventListener('fetch', (event) => {
   let rel = decodeURIComponent(url.pathname.slice(SCOPE.length));
   if (rel === '' || rel.endsWith('/')) rel += 'index.html';
   if (rel === 'sw.js' || rel.startsWith('_lock/')) return;
-  const served = serve(event.request, rel);
-  const limited = event.request.mode !== 'navigate' ? served : Promise.race([served,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), NAVIGATE_MS))]);
-  event.respondWith(limited.catch(() => fetch(event.request)));
+  event.respondWith(serve(event.request, rel).catch(() => fetch(event.request)));
 });
 
 async function load() {
   if (state) return state;
-  const access = await lock.loadAccess();
+  const access = await Promise.race([lock.loadAccess(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('IndexedDB 超时')), IDB_MS))]);
   if (!access) return null;
   const response = await fetch(`${SCOPE}_lock/manifest.bin`, { cache: 'no-cache' });
   if (!response.ok) throw new Error(`清单读取失败 ${response.status}`); // 网络问题：保留解锁状态
