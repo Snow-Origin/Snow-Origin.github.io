@@ -1,0 +1,45 @@
+name: 手动发布 GitHub Pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 确认将 main 当前素材部署到公开 Pages
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main' && inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v6
+
+      - name: Prepare Pages
+        run: |
+          mkdir -p _site
+          rsync -a --delete --exclude='.git/' --exclude='.github/' --exclude='_site/' --exclude='README.md' ./ _site/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
