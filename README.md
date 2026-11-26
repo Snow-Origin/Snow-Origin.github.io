@@ -26,7 +26,9 @@
 
 ## 预览与发布
 
-本地预览：在仓库根目录运行 `python3 -m http.server 8000`，打开 http://localhost:8000/ 。推送 `main` 后由 GitHub Pages 自动发布。
+本地预览：在仓库根目录运行 `python3 -m http.server 8000`，打开 http://localhost:8000/ 。
+
+推送 `main` 只更新素材。发布由 [手动工作流](.github/workflows/publish-pages.yml)控制，只有在 Actions 页面选择 `main` 并勾选“确认发布”后才部署。
 
 ## 项目
 
